@@ -7,7 +7,7 @@
 //! // Create a pool
 //! let pool = BytePool::new();
 //!
-//! // Allocate a buffer
+//! // Allocate a buffer with capacity 1024.
 //! let mut buf = pool.alloc(1024);
 //!
 //! // write some data into it
@@ -37,8 +37,9 @@ pub struct BytePool {
     list: Mutex<Vec<Vec<u8>>>,
 }
 
-pub type RawBlock = Vec<u8>;
-
+/// The value returned by an allocation of the pool.
+/// When it is dropped the memory gets returned into the pool, and is not zeroed.
+/// If that is a concern, you must clear the data yourself.
 pub struct Block<'a> {
     data: mem::ManuallyDrop<Vec<u8>>,
     pool: &'a BytePool,
@@ -66,6 +67,8 @@ impl BytePool {
 
     /// Allocates a new `Block`, which represents a fixed sice byte slice.
     /// If `Block` is dropped, the memory is _not_ freed, but rather it is returned into the pool.
+    /// The returned `Block` contains arbitrary data, and must be zeroed or overwritten,
+    /// in cases this is needed.
     pub fn alloc(&self, size: usize) -> Block<'_> {
         assert!(size > 0, "Can not allocate empty blocks");
 
@@ -75,9 +78,10 @@ impl BytePool {
         let start = if end > 4 { end - 4 } else { 0 };
 
         for i in start..end {
-            if lock[i].len() == size {
+            if lock[i].capacity() == size {
                 // found one, reuse it
-                return Block::new(lock.remove(i), self);
+                let data = lock.remove(i);
+                return Block::new(data, self);
             }
         }
         drop(lock);
@@ -114,7 +118,10 @@ impl<'a> Block<'a> {
         assert!(new_size > 0);
         match new_size.cmp(&self.size()) {
             Greater => self.data.resize(new_size, 0u8),
-            Less => self.data.truncate(new_size),
+            Less => {
+                self.data.truncate(new_size);
+                self.shrink_to_fit();
+            }
             Equal => {}
         }
     }
@@ -179,21 +186,48 @@ mod tests {
 
         let _slice: &[u8] = &buf;
 
-        assert_eq!(buf.len(), 10);
-        for el in buf.iter_mut() {
-            *el = 1;
+        assert_eq!(buf.capacity(), 10);
+        for i in 0..10 {
+            buf[i] = 1;
         }
 
         buf.realloc(512);
-        assert_eq!(buf.len(), 512);
+        assert_eq!(buf.capacity(), 512);
         for el in buf.iter().take(10) {
             assert_eq!(*el, 1);
         }
 
         buf.realloc(5);
-        assert_eq!(buf.len(), 5);
+        assert_eq!(buf.capacity(), 5);
         for el in buf.iter() {
             assert_eq!(*el, 1);
         }
+    }
+
+    #[test]
+    fn multi_thread() {
+        let pool = std::sync::Arc::new(BytePool::new());
+
+        let pool1 = pool.clone();
+        let h1 = std::thread::spawn(move || {
+            for _ in 0..100 {
+                let mut buf = pool1.alloc(64);
+                buf[10] = 10;
+            }
+        });
+
+        let pool2 = pool.clone();
+        let h2 = std::thread::spawn(move || {
+            for _ in 0..100 {
+                let mut buf = pool2.alloc(64);
+                buf[10] = 10;
+            }
+        });
+
+        h1.join().unwrap();
+        h2.join().unwrap();
+
+        // two threads allocating in parallel will need 2 buffers
+        assert_eq!(pool.list.lock().unwrap().len(), 2);
     }
 }
