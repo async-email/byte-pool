@@ -34,8 +34,12 @@ use std::sync::Mutex;
 /// A pool of byte slices, that reuses memory.
 #[derive(Debug)]
 pub struct BytePool {
-    list: Mutex<Vec<Vec<u8>>>,
+    list_large: Mutex<Vec<Vec<u8>>>,
+    list_small: Mutex<Vec<Vec<u8>>>,
 }
+
+/// The size at which point values are allocated in the small list, rather than the big.
+const SPLIT_SIZE: usize = 4 * 1024;
 
 /// The value returned by an allocation of the pool.
 /// When it is dropped the memory gets returned into the pool, and is not zeroed.
@@ -54,7 +58,8 @@ impl fmt::Debug for Block<'_> {
 impl Default for BytePool {
     fn default() -> Self {
         BytePool {
-            list: Mutex::new(Vec::new()),
+            list_large: Mutex::new(Vec::new()),
+            list_small: Mutex::new(Vec::new()),
         }
     }
 }
@@ -73,7 +78,11 @@ impl BytePool {
         assert!(size > 0, "Can not allocate empty blocks");
 
         // check the last 4 blocks
-        let mut lock = self.list.lock().unwrap();
+        let mut lock = if size < SPLIT_SIZE {
+            self.list_small.lock().unwrap()
+        } else {
+            self.list_large.lock().unwrap()
+        };
         let end = lock.len();
         let start = if end > 4 { end - 4 } else { 0 };
 
@@ -92,7 +101,11 @@ impl BytePool {
     }
 
     fn push_raw_block(&self, block: Vec<u8>) {
-        self.list.lock().unwrap().push(block);
+        if block.capacity() < SPLIT_SIZE {
+            self.list_small.lock().unwrap().push(block);
+        } else {
+            self.list_large.lock().unwrap().push(block);
+        }
     }
 }
 
@@ -228,6 +241,6 @@ mod tests {
         h2.join().unwrap();
 
         // two threads allocating in parallel will need 2 buffers
-        assert_eq!(pool.list.lock().unwrap().len(), 2);
+        assert_eq!(pool.list_small.lock().unwrap().len(), 2);
     }
 }
