@@ -1,9 +1,15 @@
 [package]
 name = "byte-pool"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["dignifiedquire <me@dignifiedquire.com>"]
+description = "Pool of byte slices, for efficient memory usage"
 edition = "2018"
+readme = "README.md"
+license = "Apache-2.0/MIT"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[badges]
+maintenance = { status = "actively-developed" }
+is-it-maintained-issue-resolution = { repository = "dignifiedquire/byte-pool" }
+is-it-maintained-open-issues = { repository = "dignifiedquire/byte-pool" }
 
 [dependencies]
