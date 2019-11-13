@@ -29,13 +29,14 @@ use std::fmt;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::ptr;
-use std::sync::Mutex;
+
+use crossbeam_queue::SegQueue;
 
 /// A pool of byte slices, that reuses memory.
 #[derive(Debug)]
 pub struct BytePool {
-    list_large: Mutex<Vec<Vec<u8>>>,
-    list_small: Mutex<Vec<Vec<u8>>>,
+    list_large: SegQueue<Vec<u8>>,
+    list_small: SegQueue<Vec<u8>>,
 }
 
 /// The size at which point values are allocated in the small list, rather than the big.
@@ -58,8 +59,8 @@ impl fmt::Debug for Block<'_> {
 impl Default for BytePool {
     fn default() -> Self {
         BytePool {
-            list_large: Mutex::new(Vec::new()),
-            list_small: Mutex::new(Vec::new()),
+            list_large: SegQueue::new(),
+            list_small: SegQueue::new(),
         }
     }
 }
@@ -78,22 +79,20 @@ impl BytePool {
         assert!(size > 0, "Can not allocate empty blocks");
 
         // check the last 4 blocks
-        let mut lock = if size < SPLIT_SIZE {
-            self.list_small.lock().unwrap()
+        let list = if size < SPLIT_SIZE {
+            &self.list_small
         } else {
-            self.list_large.lock().unwrap()
+            &self.list_large
         };
-        let end = lock.len();
-        let start = if end > 4 { end - 4 } else { 0 };
-
-        for i in start..end {
-            if lock[i].capacity() == size {
+        if let Ok(el) = list.pop() {
+            if el.capacity() == size {
                 // found one, reuse it
-                let data = lock.remove(i);
-                return Block::new(data, self);
+                return Block::new(el, self);
+            } else {
+                // put it back
+                list.push(el);
             }
         }
-        drop(lock);
 
         // allocate a new block
         let data = vec![0u8; size];
@@ -102,9 +101,9 @@ impl BytePool {
 
     fn push_raw_block(&self, block: Vec<u8>) {
         if block.capacity() < SPLIT_SIZE {
-            self.list_small.lock().unwrap().push(block);
+            self.list_small.push(block);
         } else {
-            self.list_large.lock().unwrap().push(block);
+            self.list_large.push(block);
         }
     }
 }
@@ -241,6 +240,6 @@ mod tests {
         h2.join().unwrap();
 
         // two threads allocating in parallel will need 2 buffers
-        assert_eq!(pool.list_small.lock().unwrap().len(), 2);
+        assert!(pool.list_small.len() <= 2);
     }
 }
