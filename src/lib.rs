@@ -188,10 +188,12 @@ impl<'a> Block<'a> {
 
     /// Resizes a block to a new size
     pub fn realloc(&mut self, new_size: usize) {
-        if new_size < self.size() {
-            self.data.shrink(new_size);
-        } else if new_size > self.size() {
-            self.data.grow(new_size);
+        use std::cmp::Ordering::*;
+
+        match new_size.cmp(&self.size()) {
+            Greater => self.data.grow(new_size),
+            Less => self.data.shrink(new_size),
+            Equal => {}
         }
     }
 
