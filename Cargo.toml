@@ -13,3 +13,8 @@ is-it-maintained-issue-resolution = { repository = "dignifiedquire/byte-pool" }
 is-it-maintained-open-issues = { repository = "dignifiedquire/byte-pool" }
 
 [dependencies]
+stable_deref_trait = { version = "1.1.1", optional = true }
+
+[features]
+default = ["stable_deref"]
+stable_deref = ["stable_deref_trait"]

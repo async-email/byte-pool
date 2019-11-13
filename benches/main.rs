@@ -72,3 +72,32 @@ fn pool_mixed(b: &mut Bencher) {
         i += 1;
     });
 }
+
+#[bench]
+fn base_vec_grow(b: &mut Bencher) {
+    let mut size = 16;
+
+    b.iter(|| {
+        let mut buf = vec![0u8; size];
+        touch_obj(&mut buf, size);
+
+        size = (size * 2).min(4 * 1024);
+        buf.resize(size, 0);
+        touch_obj(&mut buf, size);
+    });
+}
+
+#[bench]
+fn pool_grow(b: &mut Bencher) {
+    let mut size = 16;
+    let pool = BytePool::new();
+
+    b.iter(|| {
+        let mut buf = pool.alloc(size);
+        touch_obj(&mut buf, size);
+
+        size = (size * 2).min(4 * 1024);
+        buf.realloc(size);
+        touch_obj(&mut buf, size);
+    });
+}

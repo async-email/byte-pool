@@ -25,13 +25,15 @@
 //! drop(pool);
 //! ```
 
-use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+use std::alloc::{alloc, dealloc, handle_alloc_error, realloc, Layout};
+use std::fmt;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::ptr::{self, NonNull};
 use std::sync::Mutex;
 
 /// A pool of byte slices, that reuses memory.
+#[derive(Debug)]
 pub struct BytePool {
     list: Mutex<Vec<RawBlock>>,
 }
@@ -41,9 +43,27 @@ pub struct RawBlock {
     layout: Layout,
 }
 
+unsafe impl Sync for RawBlock {}
+unsafe impl Send for RawBlock {}
+
+#[cfg(feature = "stable_deref")]
+unsafe impl stable_deref_trait::StableDeref for RawBlock {}
+
 pub struct Block<'a> {
     data: mem::ManuallyDrop<RawBlock>,
     pool: &'a BytePool,
+}
+
+impl fmt::Debug for Block<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Block").field("data", &self.data).finish()
+    }
+}
+
+impl fmt::Debug for RawBlock {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RawBlock({:?})", self.deref())
+    }
 }
 
 impl Default for BytePool {
@@ -103,7 +123,7 @@ impl<'a> Drop for Block<'a> {
 }
 
 impl RawBlock {
-    pub fn alloc(size: usize) -> Self {
+    fn alloc(size: usize) -> Self {
         // TODO: consider caching the layout
         let layout = layout_for_size(size);
         debug_assert!(layout.size() > 0);
@@ -113,6 +133,24 @@ impl RawBlock {
             ptr: NonNull::new(ptr).unwrap_or_else(|| handle_alloc_error(layout)),
             layout,
         }
+    }
+
+    fn grow(&mut self, new_size: usize) {
+        // TODO: use grow_in_place once it stablizies and possibly via a flag.
+        assert!(new_size > 0);
+        let new_layout = Layout::from_size_align(new_size, self.layout.align()).unwrap();
+        let new_ptr = unsafe { realloc(self.ptr.as_mut(), self.layout, new_layout.size()) };
+        self.ptr = NonNull::new(new_ptr).unwrap_or_else(|| handle_alloc_error(self.layout));
+        self.layout = new_layout;
+    }
+
+    fn shrink(&mut self, new_size: usize) {
+        // TODO: use shrink_in_place once it stablizies and possibly via a flag.
+        assert!(new_size > 0);
+        let new_layout = Layout::from_size_align(new_size, self.layout.align()).unwrap();
+        let new_ptr = unsafe { realloc(self.ptr.as_mut(), self.layout, new_layout.size()) };
+        self.ptr = NonNull::new(new_ptr).unwrap_or_else(|| handle_alloc_error(self.layout));
+        self.layout = new_layout;
     }
 }
 
@@ -141,11 +179,25 @@ impl DerefMut for RawBlock {
 }
 
 impl<'a> Block<'a> {
-    pub fn new(data: RawBlock, pool: &'a BytePool) -> Self {
+    fn new(data: RawBlock, pool: &'a BytePool) -> Self {
         Block {
             data: mem::ManuallyDrop::new(data),
             pool,
         }
+    }
+
+    /// Resizes a block to a new size
+    pub fn realloc(&mut self, new_size: usize) {
+        if new_size < self.size() {
+            self.data.shrink(new_size);
+        } else if new_size > self.size() {
+            self.data.grow(new_size);
+        }
+    }
+
+    /// Returns the amount of bytes this block has.
+    pub fn size(&self) -> usize {
+        self.data.layout.size()
     }
 }
 
@@ -192,6 +244,29 @@ mod tests {
             for el in block_4k.deref() {
                 assert_eq!(*el, i as u8);
             }
+        }
+    }
+
+    #[test]
+    fn realloc() {
+        let pool = BytePool::new();
+
+        let mut buf = pool.alloc(10);
+        assert_eq!(buf.len(), 10);
+        for el in buf.iter_mut() {
+            *el = 1;
+        }
+
+        buf.realloc(512);
+        assert_eq!(buf.len(), 512);
+        for el in buf.iter().take(10) {
+            assert_eq!(*el, 1);
+        }
+
+        buf.realloc(5);
+        assert_eq!(buf.len(), 5);
+        for el in buf.iter() {
+            assert_eq!(*el, 1);
         }
     }
 }
