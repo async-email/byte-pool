@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::hash::Hash;
+use std::hash::{BuildHasher, Hash};
 
 /// The trait required to be able to use a type in `BytePool`.
 pub trait Poolable {
@@ -17,13 +17,17 @@ impl<T: Default + Clone> Poolable for Vec<T> {
     }
 }
 
-impl<S: Eq + Hash, T> Poolable for HashMap<S, T> {
+impl<K, V, S> Poolable for HashMap<K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher + Default,
+{
     fn capacity(&self) -> usize {
         self.capacity()
     }
 
     fn alloc(size: usize) -> Self {
-        HashMap::with_capacity(size)
+        HashMap::with_capacity_and_hasher(size, Default::default())
     }
 }
 
@@ -48,7 +52,11 @@ impl<T: Default + Clone> Realloc for Vec<T> {
     }
 }
 
-impl<S: Eq + Hash, T> Realloc for HashMap<S, T> {
+impl<K, V, S> Realloc for HashMap<K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher,
+{
     fn realloc(&mut self, new_size: usize) {
         use std::cmp::Ordering::*;
 
