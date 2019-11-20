@@ -137,6 +137,16 @@ benches_for_size!(
     pool_8k_no_contention
 );
 
+benches_for_size!(
+    1 * 1024 * 1024,
+    M1_vec,
+    M1_pool,
+    M1_vec_contention,
+    M1_vec_no_contention,
+    M1_pool_contention,
+    M1_pool_no_contention
+);
+
 #[bench]
 fn base_line_vec_mixed(b: &mut Bencher) {
     let mut i = 0;
