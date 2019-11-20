@@ -50,7 +50,7 @@
 use byte_pool::BytePool;
 
 // Create a pool
-let pool = BytePool::new();
+let pool = BytePool::<Vec<u8>>::new();
 
 // Allocate a buffer
 let mut buf = pool.alloc(1024);

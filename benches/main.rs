@@ -28,7 +28,7 @@ macro_rules! benches_for_size {
         #[bench]
         fn $name2(b: &mut Bencher) {
             b.bytes = $size as u64;
-            let pool = BytePool::new();
+            let pool = BytePool::<Vec<u8>>::new();
 
             b.iter(|| {
                 // alloc
@@ -61,7 +61,7 @@ macro_rules! benches_for_size {
 
 fn run_pool(thread: usize, iter: usize, size: usize) {
     use std::sync::Arc;
-    let p = Arc::new(BytePool::new());
+    let p = Arc::new(BytePool::<Vec<u8>>::new());
     let mut threads = Vec::new();
 
     for _ in 0..thread {
@@ -165,7 +165,7 @@ fn base_line_vec_mixed(b: &mut Bencher) {
 fn pool_mixed(b: &mut Bencher) {
     let mut i = 0;
 
-    let pool = BytePool::new();
+    let pool = BytePool::<Vec<u8>>::new();
 
     b.iter(|| {
         // alternate between two sizes
@@ -194,7 +194,7 @@ fn base_vec_grow(b: &mut Bencher) {
 #[bench]
 fn pool_grow(b: &mut Bencher) {
     let mut size = 16;
-    let pool = BytePool::new();
+    let pool = BytePool::<Vec<u8>>::new();
 
     b.iter(|| {
         let mut buf = pool.alloc(size);
