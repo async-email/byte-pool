@@ -139,12 +139,12 @@ benches_for_size!(
 
 benches_for_size!(
     1 * 1024 * 1024,
-    M1_vec,
-    M1_pool,
-    M1_vec_contention,
-    M1_vec_no_contention,
-    M1_pool_contention,
-    M1_pool_no_contention
+    m1_vec,
+    m1_pool,
+    m1_vec_contention,
+    m1_vec_no_contention,
+    m1_pool_contention,
+    m1_pool_no_contention
 );
 
 #[bench]
