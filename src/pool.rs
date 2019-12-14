@@ -4,6 +4,7 @@ use std::ops::{Deref, DerefMut};
 use std::ptr;
 
 use crossbeam_queue::SegQueue;
+use stable_deref_trait::StableDeref;
 
 use crate::poolable::{Poolable, Realloc};
 
@@ -131,6 +132,9 @@ impl<'a, T: Poolable> DerefMut for Block<'a, T> {
     }
 }
 
+// Safe because Block is just a wrapper around `T`.
+unsafe impl<'a, T: StableDeref + Poolable> StableDeref for Block<'a, T> {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,6 +248,18 @@ mod tests {
     fn basics_hash_map() {
         use std::collections::HashMap;
         let pool: BytePool<HashMap<String, String>> = BytePool::new();
+
+        let mut map = pool.alloc(4);
+        for i in 0..4 {
+            map.insert(format!("hello_{}", i), "world".into());
+        }
+        for i in 0..4 {
+            assert_eq!(
+                map.get(&format!("hello_{}", i)).unwrap(),
+                &"world".to_string()
+            );
+        }
+        drop(map);
 
         for i in 0..100 {
             let mut block_1k = pool.alloc(1 * 1024);
