@@ -23,7 +23,7 @@ where
     S: BuildHasher + Default,
 {
     fn capacity(&self) -> usize {
-        self.capacity()
+        self.len()
     }
 
     fn alloc(size: usize) -> Self {
