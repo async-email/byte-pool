@@ -18,5 +18,5 @@ is-it-maintained-open-issues = { repository = "dignifiedquire/byte-pool" }
 default = []
 
 [dependencies]
-crossbeam-queue = "0.2.0"
+crossbeam-queue = "0.3.1"
 stable_deref_trait = "1.1.1"

@@ -64,7 +64,7 @@ impl<T: Poolable> BytePool<T> {
         } else {
             &self.list_large
         };
-        if let Ok(el) = list.pop() {
+        if let Some(el) = list.pop() {
             if el.capacity() == size {
                 // found one, reuse it
                 return Block::new(el, self);
