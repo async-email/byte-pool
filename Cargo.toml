@@ -1,6 +1,6 @@
 [package]
 name = "byte-pool"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["dignifiedquire <me@dignifiedquire.com>"]
 repository = "https://github.com/dignifiedquire/byte-pool"
 description = "Pool of byte slices, for efficient memory usage"
