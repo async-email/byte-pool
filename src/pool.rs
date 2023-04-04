@@ -56,6 +56,14 @@ impl<T: Poolable> BytePool<T> {
     /// The returned `Block` contains arbitrary data, and must be zeroed or overwritten,
     /// in cases this is needed.
     pub fn alloc(&self, size: usize) -> Block<'_, T> {
+        self.alloc_internal(size, false)
+    }
+
+    pub fn alloc_and_fill(&self, size: usize) -> Block<'_, T> {
+        self.alloc_internal(size, true)
+    }
+
+    pub fn alloc_internal(&self, size: usize, fill: bool) -> Block<'_, T> {
         assert!(size > 0, "Can not allocate empty blocks");
 
         // check the last 4 blocks
@@ -64,9 +72,12 @@ impl<T: Poolable> BytePool<T> {
         } else {
             &self.list_large
         };
-        if let Some(el) = list.pop() {
-            if el.capacity() == size {
+        if let Some(mut el) = list.pop() {
+            if el.capacity() >= size && el.capacity() < size + 1024 {
                 // found one, reuse it
+                if fill {
+                    el.resize(size)
+                }
                 return Block::new(el, self);
             } else {
                 // put it back
@@ -75,7 +86,11 @@ impl<T: Poolable> BytePool<T> {
         }
 
         // allocate a new block
-        let data = T::alloc(size);
+        let data = if fill {
+            T::alloc_and_fill(size)
+        } else {
+            T::alloc(size)
+        };
         Block::new(data, self)
     }
 
@@ -90,7 +105,8 @@ impl<T: Poolable> BytePool<T> {
 
 impl<'a, T: Poolable> Drop for Block<'a, T> {
     fn drop(&mut self) {
-        let data = mem::ManuallyDrop::into_inner(unsafe { ptr::read(&self.data) });
+        let mut data = mem::ManuallyDrop::into_inner(unsafe { ptr::read(&self.data) });
+        data.reset();
         self.pool.push_raw_block(data);
     }
 }
@@ -138,6 +154,41 @@ unsafe impl<'a, T: StableDeref + Poolable> StableDeref for Block<'a, T> {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn append() {
+        let pool = BytePool::<Vec<u8>>::new();
+        let mut buf = pool.alloc(4);
+        assert_eq!(0, buf.len());
+        assert_eq!(4, buf.capacity());
+        buf.push(12u8);
+        assert_eq!(1, buf.len());
+        buf.extend_from_slice("hello".as_bytes());
+        assert_eq!(6, buf.len());
+        buf.clear();
+        assert_eq!(0, buf.len());
+        assert!(buf.capacity() > 0);
+    }
+
+    #[test]
+    fn len_and_capacity() {
+        let pool = BytePool::<Vec<u8>>::new();
+        for i in 1..10 {
+            let buf = pool.alloc_and_fill(i);
+            assert_eq!(buf.len(), i)
+        }
+        for i in 1..10 {
+            let buf = pool.alloc(i);
+            assert_eq!(buf.len(), 0)
+        }
+        for i in 1..10 {
+            let buf = pool.alloc_and_fill(i * 10000);
+            assert_eq!(buf.len(), i * 10000)
+        }
+        for i in 1..10 {
+            let buf = pool.alloc(i * 10000);
+            assert_eq!(buf.len(), 0)
+        }
+    }
 
     #[test]
     fn basics_vec_u8() {
@@ -174,6 +225,7 @@ mod tests {
         let _slice: &[u8] = &buf;
 
         assert_eq!(buf.capacity(), 10);
+        buf.resize(10, 0);
         for i in 0..10 {
             buf[i] = 1;
         }
@@ -198,7 +250,7 @@ mod tests {
         let pool1 = pool.clone();
         let h1 = std::thread::spawn(move || {
             for _ in 0..100 {
-                let mut buf = pool1.alloc(64);
+                let mut buf = pool1.alloc_and_fill(64);
                 buf[10] = 10;
             }
         });
@@ -206,7 +258,7 @@ mod tests {
         let pool2 = pool.clone();
         let h2 = std::thread::spawn(move || {
             for _ in 0..100 {
-                let mut buf = pool2.alloc(64);
+                let mut buf = pool2.alloc_and_fill(64);
                 buf[10] = 10;
             }
         });

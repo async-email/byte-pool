@@ -3,16 +3,41 @@ use std::hash::{BuildHasher, Hash};
 
 /// The trait required to be able to use a type in `BytePool`.
 pub trait Poolable {
+    fn empty(&self) -> bool;
+    fn len(&self) -> usize;
     fn capacity(&self) -> usize;
+    fn resize(&mut self, count: usize);
+    fn reset(&mut self);
     fn alloc(size: usize) -> Self;
+    fn alloc_and_fill(size: usize) -> Self;
 }
 
 impl<T: Default + Clone> Poolable for Vec<T> {
-    fn capacity(&self) -> usize {
+    fn empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn len(&self) -> usize {
         self.len()
     }
 
+    fn capacity(&self) -> usize {
+        self.capacity()
+    }
+
+    fn resize(&mut self, count: usize) {
+        self.resize(count, T::default());
+    }
+
+    fn reset(&mut self) {
+        self.clear();
+    }
+
     fn alloc(size: usize) -> Self {
+        Vec::<T>::with_capacity(size)
+    }
+
+    fn alloc_and_fill(size: usize) -> Self {
         vec![T::default(); size]
     }
 }
@@ -22,11 +47,32 @@ where
     K: Eq + Hash,
     S: BuildHasher + Default,
 {
-    fn capacity(&self) -> usize {
+    fn empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn len(&self) -> usize {
         self.len()
     }
 
+    fn capacity(&self) -> usize {
+        self.capacity()
+    }
+
+    fn resize(&mut self, _count: usize) {
+        // do thing
+    }
+
+    fn reset(&mut self) {
+        self.clear();
+    }
+
     fn alloc(size: usize) -> Self {
+        Self::alloc_and_fill(size)
+    }
+
+    fn alloc_and_fill(size: usize) -> Self {
+        // not actually filling the HaspMap though
         HashMap::with_capacity_and_hasher(size, Default::default())
     }
 }
@@ -42,7 +88,7 @@ impl<T: Default + Clone> Realloc for Vec<T> {
 
         assert!(new_size > 0);
         match new_size.cmp(&self.capacity()) {
-            Greater => self.resize(new_size, T::default()),
+            Greater => self.reserve(new_size - self.capacity()),
             Less => {
                 self.truncate(new_size);
                 self.shrink_to_fit();
