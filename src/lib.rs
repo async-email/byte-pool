@@ -9,6 +9,7 @@
 //!
 //! // Allocate a buffer with capacity 1024.
 //! let mut buf = pool.alloc(1024);
+//! buf.resize(1024, 0);
 //!
 //! // write some data into it
 //! for i in 0..100 {

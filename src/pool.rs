@@ -90,7 +90,8 @@ impl<T: Poolable> BytePool<T> {
 
 impl<'a, T: Poolable> Drop for Block<'a, T> {
     fn drop(&mut self) {
-        let data = mem::ManuallyDrop::into_inner(unsafe { ptr::read(&self.data) });
+        let mut data = mem::ManuallyDrop::into_inner(unsafe { ptr::read(&self.data) });
+        data.reset();
         self.pool.push_raw_block(data);
     }
 }
@@ -138,6 +139,20 @@ unsafe impl<'a, T: StableDeref + Poolable> StableDeref for Block<'a, T> {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn append() {
+        let pool = BytePool::<Vec<u8>>::new();
+        let mut buf = pool.alloc(4);
+        assert_eq!(0, buf.len());
+        assert_eq!(4, buf.capacity());
+        buf.push(12u8);
+        assert_eq!(1, buf.len());
+        buf.extend_from_slice("hello".as_bytes());
+        assert_eq!(6, buf.len());
+        buf.clear();
+        assert_eq!(0, buf.len());
+        assert!(buf.capacity() > 0);
+    }
 
     #[test]
     fn basics_vec_u8() {
@@ -174,6 +189,7 @@ mod tests {
         let _slice: &[u8] = &buf;
 
         assert_eq!(buf.capacity(), 10);
+        buf.resize(10, 0);
         for i in 0..10 {
             buf[i] = 1;
         }
@@ -199,7 +215,7 @@ mod tests {
         let h1 = std::thread::spawn(move || {
             for _ in 0..100 {
                 let mut buf = pool1.alloc(64);
-                buf[10] = 10;
+                buf.push(10);
             }
         });
 
@@ -207,7 +223,7 @@ mod tests {
         let h2 = std::thread::spawn(move || {
             for _ in 0..100 {
                 let mut buf = pool2.alloc(64);
-                buf[10] = 10;
+                buf.push(10);
             }
         });
 

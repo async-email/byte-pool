@@ -3,17 +3,32 @@ use std::hash::{BuildHasher, Hash};
 
 /// The trait required to be able to use a type in `BytePool`.
 pub trait Poolable {
+    fn empty(&self) -> bool;
+    fn len(&self) -> usize;
     fn capacity(&self) -> usize;
     fn alloc(size: usize) -> Self;
+    fn reset(&mut self);
 }
 
 impl<T: Default + Clone> Poolable for Vec<T> {
-    fn capacity(&self) -> usize {
+    fn empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn len(&self) -> usize {
         self.len()
     }
 
+    fn capacity(&self) -> usize {
+        self.capacity()
+    }
+
     fn alloc(size: usize) -> Self {
-        vec![T::default(); size]
+        Vec::<T>::with_capacity(size)
+    }
+
+    fn reset(&mut self) {
+        self.clear();
     }
 }
 
@@ -22,12 +37,24 @@ where
     K: Eq + Hash,
     S: BuildHasher + Default,
 {
-    fn capacity(&self) -> usize {
+    fn empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn len(&self) -> usize {
         self.len()
+    }
+
+    fn capacity(&self) -> usize {
+        self.capacity()
     }
 
     fn alloc(size: usize) -> Self {
         HashMap::with_capacity_and_hasher(size, Default::default())
+    }
+
+    fn reset(&mut self) {
+        self.clear();
     }
 }
 
@@ -42,7 +69,7 @@ impl<T: Default + Clone> Realloc for Vec<T> {
 
         assert!(new_size > 0);
         match new_size.cmp(&self.capacity()) {
-            Greater => self.resize(new_size, T::default()),
+            Greater => self.reserve(new_size - self.capacity()),
             Less => {
                 self.truncate(new_size);
                 self.shrink_to_fit();
