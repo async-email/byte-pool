@@ -41,11 +41,13 @@ impl<T: Default + Clone> Realloc for Vec<T> {
         use std::cmp::Ordering::*;
 
         assert!(new_size > 0);
-        match new_size.cmp(&self.capacity()) {
+        match new_size.cmp(&self.len()) {
             Greater => self.resize(new_size, T::default()),
             Less => {
                 self.truncate(new_size);
+                debug_assert_eq!(self.len(), new_size);
                 self.shrink_to_fit();
+                debug_assert_eq!(self.capacity(), new_size);
             }
             Equal => {}
         }
@@ -71,6 +73,28 @@ where
                 self.shrink_to_fit();
             }
             Equal => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for `Realloc` trait implementation of `Vec`.
+    ///
+    /// Previously `Realloc::realloc()` called `self.capacity()` instead
+    /// of `self.len()` when checking whether the vector should be expanded.
+    /// As a result, it sometimes attempted to shrink the vector
+    /// when it should be expanded, and effectively did nothing.
+    #[test]
+    fn realloc_vec() {
+        let mut v: Vec<u8> = Poolable::alloc(100);
+
+        for i in 1..100 {
+            let new_size = Poolable::capacity(&v) + i;
+            v.realloc(new_size);
+            assert_eq!(Poolable::capacity(&v), new_size);
         }
     }
 }
