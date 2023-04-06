@@ -42,7 +42,15 @@ impl<T: Default + Clone> Realloc for Vec<T> {
 
         assert!(new_size > 0);
         match new_size.cmp(&self.len()) {
-            Greater => self.resize(new_size, T::default()),
+            Greater => {
+                self.reserve_exact(new_size - self.len());
+                debug_assert_eq!(self.capacity(), new_size);
+                self.resize(new_size, T::default());
+                debug_assert_eq!(self.len(), new_size);
+
+                // Check that resize() did not reserve additional space.
+                debug_assert_eq!(self.capacity(), new_size);
+            }
             Less => {
                 self.truncate(new_size);
                 debug_assert_eq!(self.len(), new_size);
@@ -95,6 +103,12 @@ mod tests {
             let new_size = Poolable::capacity(&v) + i;
             v.realloc(new_size);
             assert_eq!(Poolable::capacity(&v), new_size);
+
+            // Length of the vectory and underlying buffer
+            // for poolable vectors should
+            // be exactly of the requested size.
+            assert_eq!(v.len(), new_size);
+            assert_eq!(v.capacity(), new_size);
         }
     }
 }
